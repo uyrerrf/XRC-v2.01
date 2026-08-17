@@ -1,57 +1,18 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
+    // NO kotlin-android, NO kotlin.plugin.compose — AGP 9 built-in Kotlin handles both.
 }
 
-val envC2Host: String = System.getenv("XRC_C2_HOST") ?: "127.0.0.1"
-val envC2Port: String = System.getenv("XRC_C2_PORT") ?: "4444"
-val envAesKey: String = System.getenv("XRC_AES_KEY") ?: ""
-
 android {
-    namespace = "com.xrc"
-    compileSdk = 36
+    namespace = "com.xrc.implant"
+    compileSdk = 37          // REQUIRED by Compose 1.12.0 (BOM 2026.08.00)
+    targetSdk = 37           // AGP 9 defaults targetSdk to compileSdk — set it explicitly
 
     defaultConfig {
-        applicationId = "com.xrc"
+        applicationId = "com.xrc.implant"
         minSdk = 23
-        targetSdk = 36
         versionCode = 1
-        versionName = "1.0.0"
-
-        vectorDrawables { useSupportLibrary = true }
-
-        buildConfigField("String", "C2_HOST", "\"$envC2Host\"")
-        buildConfigField("Int", "C2_PORT", envC2Port)
-        buildConfigField("String", "AES_KEY", "\"$envAesKey\"")
-    }
-
-    signingConfigs {
-        create("release") {
-            val storePath = System.getenv("XRC_STORE_FILE")
-            if (!storePath.isNullOrBlank() && file(storePath).exists()) {
-                storeFile = file(storePath)
-                storePassword = System.getenv("XRC_STORE_PASS")
-                keyAlias = System.getenv("XRC_KEY_ALIAS")
-                keyPassword = System.getenv("XRC_KEY_PASS")
-            }
-        }
-    }
-
-    buildTypes {
-        release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-            signingConfig = signingConfigs.getByName("release")
-                .takeIf { it.storeFile?.exists() == true }
-                ?: signingConfigs.getByName("debug")
-        }
+        versionName = "2.01"
     }
 
     compileOptions {
@@ -59,47 +20,68 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        compose = true        // AGP supplies the Compose compiler — no plugin, no composeOptions block
+    }
+
+    // AGP 9 built-in Kotlin DSL (replaces android.kotlinOptions{})
     kotlin {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
 
-    buildFeatures {
-        compose = true
-        buildConfig = true
+    signingConfigs {
+        create("release") {
+            storeFile = System.getenv("KEYSTORE_PATH")?.let { file(it) }
+            storePassword = System.getenv("KEYSTORE_PASS")
+            keyAlias = System.getenv("KEY_ALIAS")
+            keyPassword = System.getenv("KEY_PASS")
+        }
     }
 
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    buildTypes {
+        debug {
+            // default debug keystore — always works in CI
+        }
+        release {
+            isMinifyEnabled = false   // R8 off for now: zero reflection breakage, zero CI surprises
+            signingConfig = if (System.getenv("KEYSTORE_PATH") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")   // never fail the build when secrets are absent
+            }
+        }
     }
 
     lint {
-        abortOnError = false
-        checkReleaseBuilds = false
+        checkReleaseBuilds = false    // lintVital must never sink a CI run
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
     }
 }
 
 dependencies {
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
-
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     implementation(libs.androidx.work.runtime.ktx)
 
+    debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
-
-    debugImplementation(libs.compose.ui.tooling)
 }
