@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.XRC" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/xrc_background</item>
+        <item name="android:statusBarColor">@color/xrc_background</item>
+        <item name="android:navigationBarColor">@color/xrc_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
