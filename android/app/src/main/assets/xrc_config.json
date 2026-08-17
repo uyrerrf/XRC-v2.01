@@ -1,0 +1,6 @@
+{
+  "c2_host": "127.0.0.1",
+  "c2_port": 4444,
+  "beacon_interval_ms": 30000,
+  "use_tls": false
+}
