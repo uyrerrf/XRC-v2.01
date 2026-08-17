@@ -1,4 +1,4 @@
-name: Build APK
+Name: Build APK
 
 on:
   push:
@@ -32,6 +32,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      # --- THE FIX: Install missing bleeding-edge SDK components ---
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -91,3 +98,4 @@ jobs:
           name: xrc-release
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+        
