@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.xrc.implant"
-    compileSdk = 37          // REQUIRED by Compose 1.12.0 (BOM 2026.08.00)
-    targetSdk = 37           // AGP 9 defaults targetSdk to compileSdk — set it explicitly
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.xrc.implant"
         minSdk = 23
+        targetSdk = 37
         versionCode = 1
         versionName = "2.01"
     }
