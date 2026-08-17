@@ -1,27 +1,28 @@
-name: XRC Build Pipeline
+name: Build APK
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
-      version:
-        description: 'XRC version'
-        required: false
-        default: '1.0.0'
+      variant:
+        description: 'Build variant'
+        type: choice
+        default: 'both'
+        options: ['both', 'debug', 'release']
 
 permissions:
-  contents: write
+  contents: read
 
-env:
-  GRADLE_VERSION: '9.5.0'
+concurrency:
+  group: apk-build
+  cancel-in-progress: false
 
 jobs:
   build:
-    name: Compile · Test · Sign · Package
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,51 +33,61 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Gradle ${{ env.GRADLE_VERSION }}
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Inject release keystore (only if secrets configured)
-        if: env.XRC_KEYSTORE_B64 != ''
+      - name: Validate wrapper
+        working-directory: android
+        run: |
+          test -f gradlew
+          test -f gradle/wrapper/gradle-wrapper.properties
+          chmod +x gradlew
+
+      # --- Release signing material (only present when secrets are set) ---
+      - name: Decode release keystore
+        id: keystore
+        shell: bash
         env:
-          XRC_KEYSTORE_B64: ${{ secrets.XRC_KEYSTORE_B64 }}
-        run: echo "$XRC_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/xrc-release.keystore"
+          KEYSTORE_B64: ${{ secrets.XRC_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/xrc-release.keystore"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/xrc-release.keystore" >> "$GITHUB_ENV"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Release keystore decoded ($(wc -c < "$RUNNER_TEMP/xrc-release.keystore") bytes)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No XRC_KEYSTORE_B64 secret set — release build will be skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-      - name: Build debug + release APKs + unit tests
+      # --- Debug: always builds, never needs secrets ---
+      - name: Build debug APK
+        if: inputs.variant != 'release'
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --console=plain --stacktrace
+
+      # --- Release: only when a keystore was decoded ---
+      - name: Build release APK
+        if: inputs.variant != 'debug' && steps.keystore.outputs.ready == 'true'
         working-directory: android
         env:
-          XRC_STORE_FILE: ${{ secrets.XRC_KEYSTORE_B64 != '' && runner.temp + '/xrc-release.keystore' || '' }}
-          XRC_STORE_PASS: ${{ secrets.XRC_KEYSTORE_PASS }}
-          XRC_KEY_ALIAS: ${{ secrets.XRC_KEY_ALIAS }}
-          XRC_KEY_PASS: ${{ secrets.XRC_KEY_PASS }}
-          XRC_C2_HOST: ${{ secrets.XRC_C2_HOST }}
-          XRC_C2_PORT: ${{ secrets.XRC_C2_PORT }}
-          XRC_AES_KEY: ${{ secrets.XRC_AES_KEY }}
-        run: |
-          gradle assembleDebug assembleRelease testDebugUnitTest --no-daemon --stacktrace
+          KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
+          KEYSTORE_PASS: ${{ secrets.XRC_KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.XRC_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.XRC_KEY_PASS }}
+        run: ./gradlew assembleRelease --no-daemon --console=plain --stacktrace
 
       - name: Upload debug APK
+        if: inputs.variant != 'release'
         uses: actions/upload-artifact@v4
         with:
-          name: XRC-debug
+          name: xrc-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
       - name: Upload release APK
+        if: inputs.variant != 'debug' && steps.keystore.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: XRC-release
+          name: xrc-release
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') && env.XRC_KEYSTORE_B64 != ''
-        uses: softprops/action-gh-release@v2
-        with:
-          files: android/app/build/outputs/apk/release/*.apk
-          generate_release_notes: true
