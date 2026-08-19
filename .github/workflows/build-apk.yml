@@ -33,13 +33,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK components
-        shell: bash
-        run: |
-          SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDK" --licenses >/dev/null 2>&1 || true
-          "$SDK" "platforms;android-37" "build-tools;36.0.0" "platform-tools"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -50,7 +43,7 @@ jobs:
           test -f gradle/wrapper/gradle-wrapper.properties
           chmod +x gradlew
 
-      # --- Release signing material (only when secrets are set) ---
+      # --- Release signing material (only present when secrets are set) ---
       - name: Decode release keystore
         id: keystore
         shell: bash
@@ -61,7 +54,7 @@ jobs:
             printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/xrc-release.keystore"
             echo "KEYSTORE_PATH=$RUNNER_TEMP/xrc-release.keystore" >> "$GITHUB_ENV"
             echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "Release keystore decoded." >> "$GITHUB_STEP_SUMMARY"
+            echo "Release keystore decoded ($(wc -c < "$RUNNER_TEMP/xrc-release.keystore") bytes)." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No XRC_KEYSTORE_B64 secret set — release build will be skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -70,7 +63,7 @@ jobs:
       - name: Build debug APK
         if: inputs.variant != 'release'
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --console=plain --stacktrace --build-cache
+        run: ./gradlew assembleDebug --no-daemon --console=plain --stacktrace
 
       # --- Release: only when a keystore was decoded ---
       - name: Build release APK
@@ -81,7 +74,7 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.XRC_KEYSTORE_PASS }}
           KEY_ALIAS: ${{ secrets.XRC_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.XRC_KEY_PASS }}
-        run: ./gradlew assembleRelease --no-daemon --console=plain --stacktrace --build-cache
+        run: ./gradlew assembleRelease --no-daemon --console=plain --stacktrace
 
       - name: Upload debug APK
         if: inputs.variant != 'release'
