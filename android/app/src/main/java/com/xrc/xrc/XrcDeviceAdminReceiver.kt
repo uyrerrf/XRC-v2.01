@@ -1,5 +1,7 @@
 package com.xrc.xrc
 
+import com.xrc.R
+import android.os.Build
 import android.app.admin.DeviceAdminReceiver
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
