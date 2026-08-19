@@ -27,101 +27,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Detect Android source directory
-        id: detect
-        shell: bash
-        run: |
-          for dir in android app fason client; do
-            if [ -f "$dir/build.gradle" ] || [ -f "$dir/build.gradle.kts" ]; then
-              echo "ANDROID_DIR=$dir" >> "$GITHUB_OUTPUT"
-              echo "Detected Android source in: $dir"
-              break
-            fi
-          done
-          if [ -z "$ANDROID_DIR" ]; then
-            # root-level project
-            if [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-              echo "ANDROID_DIR=." >> "$GITHUB_OUTPUT"
-              echo "Detected Android source in project root"
-            else
-              echo "::error::Could not find Android Gradle project"
-              exit 1
-            fi
-          fi
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Read compileSdk from project
-        id: sdk
-        shell: bash
-        working-directory: ${{ steps.detect.outputs.ANDROID_DIR }}
-        run: |
-          # Search in app subdir first, then root
-          COMPILE_SDK=""
-          BUILD_TOOLS=""
-
-          for f in app/build.gradle.kts app/build.gradle build.gradle.kts build.gradle; do
-            [ ! -f "$f" ] && continue
-
-            # Try Kotlin DSL first: compileSdk = 36
-            COMPILE_SDK=$(grep -oP 'compileSdk\s*=\s*\K\d+' "$f" 2>/dev/null | head -1)
-            [ -n "$COMPILE_SDK" ] && break
-
-            # Try Groovy DSL: compileSdk 36
-            COMPILE_SDK=$(grep -oP 'compileSdk\s+\K\d+' "$f" 2>/dev/null | head -1)
-            [ -n "$COMPILE_SDK" ] && break
-          done
-
-          if [ -z "$COMPILE_SDK" ]; then
-            COMPILE_SDK=36
-            echo "Warn: compileSdk not found, using fallback 36"
-          fi
-
-          # Build tools - look for explicit version
-          for f in app/build.gradle.kts app/build.gradle; do
-            [ ! -f "$f" ] && continue
-            BUILD_TOOLS=$(grep -oP 'buildToolsVersion\s*[= ]+\s*["'\"']?\K[0-9.]+' "$f" 2>/dev/null | head -1)
-            [ -n "$BUILD_TOOLS" ] && break
-          done
-
-          if [ -z "$BUILD_TOOLS" ]; then
-            BUILD_TOOLS="${COMPILE_SDK}.0.0"
-          fi
-
-          echo "compileSdk=$COMPILE_SDK"
-          echo "buildTools=$BUILD_TOOLS"
-          echo "compileSdk=$COMPILE_SDK" >> "$GITHUB_OUTPUT"
-          echo "buildTools=$BUILD_TOOLS" >> "$GITHUB_OUTPUT"
-
       - name: Install Android SDK components
         shell: bash
         run: |
           SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-
-          # License acceptance - separate from install to avoid broken pipe
-          "$SDK" --licenses > /dev/null 2>&1 || true
-
-          # Install packages
-          "$SDK" \
-            "platforms;android-${{ steps.sdk.outputs.compileSdk }}" \
-            "build-tools;${{ steps.sdk.outputs.buildTools }}" \
-            "platform-tools"
+          yes | "$SDK" --licenses >/dev/null 2>&1 || true
+          "$SDK" "platforms;android-37" "build-tools;36.0.0" "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Validate wrapper
-        working-directory: ${{ steps.detect.outputs.ANDROID_DIR }}
+        working-directory: android
         run: |
           test -f gradlew
           test -f gradle/wrapper/gradle-wrapper.properties
           chmod +x gradlew
 
-      # --- Release signing material ---
+      # --- Release signing material (only when secrets are set) ---
       - name: Decode release keystore
         id: keystore
         shell: bash
@@ -137,16 +66,16 @@ jobs:
             echo "No XRC_KEYSTORE_B64 secret set — release build will be skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # --- Debug build ---
+      # --- Debug: always builds, never needs secrets ---
       - name: Build debug APK
         if: inputs.variant != 'release'
-        working-directory: ${{ steps.detect.outputs.ANDROID_DIR }}
+        working-directory: android
         run: ./gradlew assembleDebug --no-daemon --console=plain --stacktrace --build-cache
 
-      # --- Release build ---
+      # --- Release: only when a keystore was decoded ---
       - name: Build release APK
         if: inputs.variant != 'debug' && steps.keystore.outputs.ready == 'true'
-        working-directory: ${{ steps.detect.outputs.ANDROID_DIR }}
+        working-directory: android
         env:
           KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
           KEYSTORE_PASS: ${{ secrets.XRC_KEYSTORE_PASS }}
@@ -159,7 +88,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: xrc-debug
-          path: ${{ steps.detect.outputs.ANDROID_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
       - name: Upload release APK
@@ -167,5 +96,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: xrc-release
-          path: ${{ steps.detect.outputs.ANDROID_DIR }}/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
