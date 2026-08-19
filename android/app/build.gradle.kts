@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
-    // NO kotlin-android, NO kotlin.plugin.compose — AGP 9 built-in Kotlin handles both.
+    alias(libs.plugins.kotlin.compose)   // ← REQUIRED when using Compose
 }
 
 android {
@@ -21,10 +21,9 @@ android {
     }
 
     buildFeatures {
-        compose = true        // AGP supplies the Compose compiler — no plugin, no composeOptions block
+        compose = true
     }
 
-    // AGP 9 built-in Kotlin DSL (replaces android.kotlinOptions{})
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
@@ -45,17 +44,17 @@ android {
             // default debug keystore — always works in CI
         }
         release {
-            isMinifyEnabled = false   // R8 off for now: zero reflection breakage, zero CI surprises
+            isMinifyEnabled = false
             signingConfig = if (System.getenv("KEYSTORE_PATH") != null) {
                 signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug")   // never fail the build when secrets are absent
+                signingConfigs.getByName("debug")
             }
         }
     }
 
     lint {
-        checkReleaseBuilds = false    // lintVital must never sink a CI run
+        checkReleaseBuilds = false
     }
 
     packaging {
