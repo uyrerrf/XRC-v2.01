@@ -1,5 +1,6 @@
 package com.xrc
 
+import com.xrc.R
 import android.app.admin.DevicePolicyManager
 import android.content.Intent
 import android.os.Bundle
