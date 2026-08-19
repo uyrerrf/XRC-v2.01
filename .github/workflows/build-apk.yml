@@ -27,19 +27,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # --- 1. Set up Java ---
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # --- THE FIX: Install missing bleeding-edge SDK components ---
+      # --- 2. Set up Android SDK & Licenses ---
+      # This fixes the Gradle evaluation crash caused by missing licenses or platforms
       - name: Install Android SDK components
         shell: bash
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
 
+      # --- 3. Set up Gradle ---
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -50,7 +53,7 @@ jobs:
           test -f gradle/wrapper/gradle-wrapper.properties
           chmod +x gradlew
 
-      # --- Release signing material (only present when secrets are set) ---
+      # --- 4. Release signing material ---
       - name: Decode release keystore
         id: keystore
         shell: bash
@@ -66,13 +69,13 @@ jobs:
             echo "No XRC_KEYSTORE_B64 secret set — release build will be skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # --- Debug: always builds, never needs secrets ---
+      # --- 5. Build Debug APK ---
       - name: Build debug APK
         if: inputs.variant != 'release'
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon --console=plain --stacktrace
 
-      # --- Release: only when a keystore was decoded ---
+      # --- 6. Build Release APK ---
       - name: Build release APK
         if: inputs.variant != 'debug' && steps.keystore.outputs.ready == 'true'
         working-directory: android
@@ -83,6 +86,7 @@ jobs:
           KEY_PASS: ${{ secrets.XRC_KEY_PASS }}
         run: ./gradlew assembleRelease --no-daemon --console=plain --stacktrace
 
+      # --- 7. Upload Artifacts ---
       - name: Upload debug APK
         if: inputs.variant != 'release'
         uses: actions/upload-artifact@v4
@@ -98,3 +102,4 @@ jobs:
           name: xrc-release
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+          
