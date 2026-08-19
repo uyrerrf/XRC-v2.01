@@ -33,12 +33,47 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Read compileSdk and buildToolsVersion from Gradle
+        id: sdk
+        shell: bash
+        working-directory: android
+        run: |
+          COMPILE_SDK=$(sed -n 's/.*compileSdk[[:space:]]*=[[:space:]]*\([0-9]*\).*/\1/p' app/build.gradle.kts app/build.gradle build.gradle.kts build.gradle 2>/dev/null | head -1)
+          BUILD_TOOLS=$(sed -n 's/.*buildToolsVersion[[:space:]]*["'\'']\([0-9.]*\)["'\''].*/\1/p' app/build.gradle.kts app/build.gradle 2>/dev/null | head -1)
+
+          if [ -z "$COMPILE_SDK" ]; then
+            # fallback: try Groovy syntax
+            COMPILE_SDK=$(sed -n 's/.*compileSdk[[:space:]][[:space:]]*\([0-9]*\).*/\1/p' app/build.gradle 2>/dev/null | head -1)
+          fi
+
+          if [ -z "$COMPILE_SDK" ]; then
+            echo "Could not detect compileSdk — using fallback 36"
+            COMPILE_SDK=36
+          fi
+
+          if [ -z "$BUILD_TOOLS" ]; then
+            # fallback: use the same major version as compileSdk
+            BUILD_TOOLS="${COMPILE_SDK}.0.0"
+          fi
+
+          echo "compileSdk=$COMPILE_SDK"
+          echo "buildTools=$BUILD_TOOLS"
+          echo "compileSdk=$COMPILE_SDK" >> "$GITHUB_OUTPUT"
+          echo "buildTools=$BUILD_TOOLS" >> "$GITHUB_OUTPUT"
+
       - name: Install Android SDK components
         shell: bash
         run: |
           SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDK" --licenses >/dev/null 2>&1 || true
-          "$SDK" "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+
+          # License acceptance — separate from install to avoid broken pipe
+          "$SDK" --licenses > /dev/null 2>&1 || true
+
+          # Install required packages — android-37 didn't exist; now using real values
+          "$SDK" \
+            "platforms;android-${{ steps.sdk.outputs.compileSdk }}" \
+            "build-tools;${{ steps.sdk.outputs.buildTools }}" \
+            "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
