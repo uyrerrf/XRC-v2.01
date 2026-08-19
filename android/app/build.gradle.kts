@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "com.xrc.implant"
-    compileSdk = 37
+    namespace = "com.xrc"
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.xrc.implant"
         minSdk = 23
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 1
         versionName = "2.01"
     }
