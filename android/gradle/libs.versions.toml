@@ -1,5 +1,6 @@
 [versions]
 agp = "9.3.0"
+kotlin = "2.0.21"                    # ← added
 coreKtx = "1.16.0"
 activityCompose = "1.12.3"
 lifecycle = "2.11.0"
@@ -33,3 +34,4 @@ espresso-core = { group = "androidx.test.espresso", name = "espresso-core", vers
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }   # ← added
