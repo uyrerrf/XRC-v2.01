@@ -11,6 +11,7 @@ import com.xrc.comms.ChannelClient
 import com.xrc.comms.Message
 import com.xrc.comms.Protocol
 import com.xrc.core.crypto.Identity
+import com.xrc.core.toJsonString
 
 /**
  * WiFi — WiFi scanning and monitoring module.
@@ -22,7 +23,8 @@ import com.xrc.core.crypto.Identity
  */
 class WiFi(
     private val context: Context,
-    private val channelClient: ChannelClient
+    // FIXED: nullable with default
+    private val channelClient: ChannelClient? = null
 ) {
     companion object {
         private const val TAG = "WiFiModule"
@@ -60,13 +62,15 @@ class WiFi(
                 wifiManager.startScan()
                 val results = wifiManager.scanResults
                 for (result in results) {
-                    networks.add(mapOf(
-                        "ssid" to result.SSID,
-                        "bssid" to result.BSSID,
-                        "level" to result.level,
-                        "frequency" to result.frequency,
-                        "capabilities" to result.capabilities
-                    ))
+                    networks.add(
+                        mapOf(
+                            "ssid" to result.SSID,
+                            "bssid" to result.BSSID,
+                            "level" to result.level,
+                            "frequency" to result.frequency,
+                            "capabilities" to result.capabilities
+                        )
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -101,11 +105,13 @@ class WiFi(
             type = Protocol.TYPE_SENSOR_DATA,
             id = "wifi_${System.currentTimeMillis()}",
             device_id = deviceId,
-            payload = Protocol.json.encodeToString(
-                mapOf("type" to "wifi_info", "data" to getConnectionInfo())
-            )
+            // FIXED: Map<String, Any> → JSON via recursive helper
+            payload = mapOf(
+                "type" to "wifi_info",
+                "data" to getConnectionInfo()
+            ).toJsonString()
         )
-        channelClient.send(msg)
+        channelClient?.send(msg) // FIXED: null-safe
     }
 
     private fun hasLocationPermission(): Boolean {
