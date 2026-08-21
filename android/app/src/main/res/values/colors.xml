@@ -1,7 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
 <!-- ============================================================
      FILE: android/app/src/main/res/values/colors.xml
      ============================================================ -->
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="xrc_black">#FF000000</color>
     <color name="xrc_cyan">#FF00E5FF</color>
