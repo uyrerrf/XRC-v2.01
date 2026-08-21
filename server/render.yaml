@@ -1,0 +1,17 @@
+# ============================================================
+# FILE: XRC/render.yaml  (Render.com deployment)
+# ============================================================
+services:
+  - type: web
+    name: xrc-c2
+    env: node
+    region: oregon
+    buildCommand: npm ci --only=production
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://xrc-c2.onrender.com
