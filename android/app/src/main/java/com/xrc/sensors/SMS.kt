@@ -10,6 +10,7 @@ import com.xrc.comms.ChannelClient
 import com.xrc.comms.Message
 import com.xrc.comms.Protocol
 import com.xrc.core.crypto.Identity
+import com.xrc.core.toJsonString
 
 /**
  * SMS — SMS reading and management module.
@@ -18,7 +19,8 @@ import com.xrc.core.crypto.Identity
  */
 class SMS(
     private val context: Context,
-    private val channelClient: ChannelClient
+    // FIXED: nullable with default
+    private val channelClient: ChannelClient? = null
 ) {
     companion object {
         private const val TAG = "SMSModule"
@@ -36,12 +38,15 @@ class SMS(
             type = Protocol.TYPE_SENSOR_DATA,
             id = "sms_inbox_${System.currentTimeMillis()}",
             device_id = deviceId,
-            payload = Protocol.json.encodeToString(
-                mapOf("type" to "sms_inbox", "data" to inbox, "count" to inbox.size)
-            )
+            // FIXED: List<Map<String, Any>> → JSON via recursive helper
+            payload = mapOf(
+                "type" to "sms_inbox",
+                "data" to inbox,
+                "count" to inbox.size
+            ).toJsonString()
         )
-        channelClient.send(msg)
-        return Protocol.json.encodeToString(inbox)
+        channelClient?.send(msg) // FIXED: null-safe
+        return inbox.toJsonString()
     }
 
     /**
