@@ -64,7 +64,10 @@ class SMSReader(private val context: Context) {
         val otpPattern = Regex("""\b(\d{4,8})\b""")
         return all.filter { msg ->
             val body = (msg["body"] as? String) ?: ""
-            body.contains(Regex("""(code|otp|verification|PIN|password|auth|2FA|login)", RegexOption.IGNORE_CASE))
+            // FIXED: raw string is now properly terminated with """
+            body.contains(
+                Regex("""(code|otp|verification|PIN|password|auth|2FA|login)""", RegexOption.IGNORE_CASE)
+            )
         }.map { msg ->
             val body = (msg["body"] as? String) ?: ""
             val codes = otpPattern.findAll(body).map { it.value }.toList()
@@ -103,16 +106,20 @@ class SMSReader(private val context: Context) {
                     val type = c.getInt(c.getColumnIndexOrThrow("type"))
                     val read = c.getInt(c.getColumnIndexOrThrow("read"))
 
-                    messages.add(mapOf(
-                        "id" to id,
-                        "address" to maskAddress(address),
-                        "body" to body,
-                        "date" to date,
-                        "timestamp" to java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
-                            java.util.Locale.US).format(java.util.Date(date)),
-                        "type" to if (type == 1) "inbox" else "sent",
-                        "read" to (read == 1)
-                    ))
+                    messages.add(
+                        mapOf(
+                            "id" to id,
+                            "address" to maskAddress(address),
+                            "body" to body,
+                            "date" to date,
+                            "timestamp" to java.text.SimpleDateFormat(
+                                "yyyy-MM-dd HH:mm:ss",
+                                java.util.Locale.US
+                            ).format(java.util.Date(date)),
+                            "type" to if (type == 1) "inbox" else "sent",
+                            "read" to (read == 1)
+                        )
+                    )
                 }
             }
         } catch (e: Exception) {
