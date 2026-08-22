@@ -1,31 +1,26 @@
-// ============================================================
-// FILE: android/app/src/main/java/com/xrc/sensors/CameraCapture.kt
-// ============================================================
 package com.xrc.sensors
 
 import android.Manifest
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.YuvImage
 import android.hardware.camera2.*
+import android.media.Image
+import android.media.ImageReader
 import android.os.Environment
 import android.util.Base64
 import android.util.Log
-import android.view.Surface
-import android.view.SurfaceView
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 
 /**
- * CameraCapture — captures still photos and streams frames.
+ * CameraCapture — captures still photos using Camera2 API.
  *
- * Requires CAMERA permission.
- * Uses Camera2 API for maximum compatibility (Android 5+).
+ * Uses ImageReader for reliable JPEG capture.
  */
 class CameraCapture(private val context: Context) {
     companion object {
@@ -33,9 +28,9 @@ class CameraCapture(private val context: Context) {
         private const val TIMEOUT_MS = 5000L
     }
 
-    private var cameraManager: CameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+    private val cameraManager: CameraManager =
+        context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     private var cameraDevice: CameraDevice? = null
-    private var cameraSession: CameraCaptureSession? = null
     private var isStreaming = false
     private var onFrameCallback: ((String) -> Unit)? = null
 
@@ -48,10 +43,6 @@ class CameraCapture(private val context: Context) {
 
         return try {
             val id = cameraId ?: getFrontCameraId() ?: getBackCameraId() ?: return null
-            val characteristics = cameraManager.getCameraCharacteristics(id)
-            val configs = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return null
-            val outputSizes = configs.getOutputSizes(ImageFormat.JPEG) ?: return null
-            val size = outputSizes.firstOrNull() ?: return null
 
             val semaphore = Semaphore(0)
             var result: ByteArray? = null
@@ -59,44 +50,9 @@ class CameraCapture(private val context: Context) {
             val stateCallback = object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     cameraDevice = camera
-                    val surfaceTexture = android.graphics.SurfaceTexture(10)
-                    surfaceTexture.setDefaultBufferSize(size.width, size.height)
-                    val surface = Surface(surfaceTexture)
-
-                    val captureRequest = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-                    captureRequest.addTarget(surface)
-
-                    val outputConfiguration = OutputConfiguration(surface)
-                    val sessionConfig = SessionConfiguration(
-                        SessionConfiguration.SESSION_REGULAR,
-                        listOf(outputConfiguration),
-                        context.mainExecutor,
-                        object : CameraCaptureSession.StateCallback() {
-                            override fun onConfigured(session: CameraCaptureSession) {
-                                cameraSession = session
-                                session.capture(captureRequest.build(),
-                                    object : CameraCaptureSession.CaptureCallback() {
-                                        override fun onCaptureCompleted(
-                                            session: CameraCaptureSession,
-                                            request: CaptureRequest,
-                                            result: TotalCaptureResult
-                                        ) {
-                                            // Read pixel buffer from surface
-                                            val buffer = surfaceTexture.detachNextFrame() ?: return@let
-                                            val bitmap = surfaceTextureToBitmap(surfaceTexture, size.width, size.height)
-                                            val jpegBytes = bitmapToJpeg(bitmap)
-                                            result = jpegBytes
-                                            semaphore.release()
-                                        }
-                                    }, null)
-                            }
-                            override fun onConfigureFailed(session: CameraCaptureSession) {
-                                semaphore.release()
-                            }
-                        }
-                    )
-                    sessionConfig.setSessionParameters(captureRequest.build())
-                    camera.createCaptureSession(sessionConfig)
+                    captureStillImage(camera, id, semaphore) { bytes ->
+                        result = bytes
+                    }
                 }
 
                 override fun onDisconnected(camera: CameraDevice) {
@@ -118,6 +74,68 @@ class CameraCapture(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Still capture failed: ${e.message}")
             null
+        }
+    }
+
+    private fun captureStillImage(
+        camera: CameraDevice,
+        cameraId: String,
+        semaphore: Semaphore,
+        onResult: (ByteArray) -> Unit
+    ) {
+        val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+        val configs = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: run {
+            semaphore.release()
+            return
+        }
+        val outputSizes = configs.getOutputSizes(ImageFormat.JPEG) ?: run {
+            semaphore.release()
+            return
+        }
+        val size = outputSizes.firstOrNull() ?: run {
+            semaphore.release()
+            return
+        }
+
+        val reader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 1)
+        reader.setOnImageAvailableListener({ reader ->
+            val image: Image? = reader.acquireLatestImage()
+            if (image != null) {
+                val buffer: ByteBuffer = image.planes[0].buffer
+                val bytes = ByteArray(buffer.remaining())
+                buffer.get(bytes)
+                onResult(bytes)
+                image.close()
+            }
+            semaphore.release()
+        }, null)
+
+        val outputSurface = reader.surface
+        val captureRequest = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+        captureRequest.addTarget(outputSurface)
+
+        try {
+            camera.createCaptureSession(
+                listOf(outputSurface),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        session.capture(
+                            captureRequest.build(),
+                            object : CameraCaptureSession.CaptureCallback() {},
+                            null
+                        )
+                    }
+
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        Log.e(TAG, "Capture session config failed")
+                        semaphore.release()
+                    }
+                },
+                null
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "createCaptureSession failed: ${e.message}")
+            semaphore.release()
         }
     }
 
@@ -184,21 +202,6 @@ class CameraCapture(private val context: Context) {
             if (facing == CameraCharacteristics.LENS_FACING_BACK) return id
         }
         return null
-    }
-
-    private fun surfaceTextureToBitmap(st: android.graphics.SurfaceTexture, width: Int, height: Int): Bitmap {
-        st.getTransformMatrix(FloatArray(16))
-        val buffer = android.opengl.GLES20.glReadPixels(0, 0, width, height,
-            android.opengl.GLES20.GL_RGBA, android.opengl.GLES20.GL_UNSIGNED_BYTE, java.nio.ByteBuffer.allocate(width * height * 4))
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        bitmap.copyPixelsFromBuffer(buffer)
-        return bitmap
-    }
-
-    private fun bitmapToJpeg(bitmap: Bitmap): ByteArray {
-        val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
-        return stream.toByteArray()
     }
 
     private fun hasPermission(): Boolean {
