@@ -34,6 +34,7 @@ object Protocol {
 
     // Message types
     const val TYPE_HEARTBEAT = "heartbeat"
+    const val TYPE_SENSOR_DATA = "sensor_data"
     const val TYPE_REGISTER = "register"
     const val TYPE_CMD = "cmd"
     const val TYPE_CMD_RESULT = "cmd_result"
