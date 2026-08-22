@@ -1,7 +1,12 @@
 // ============================================================
 // FILE: android/app/src/main/java/com/xrc/syringe/SyringeEngine.kt
 // ============================================================
-package com.xrc.syringe
+package com.xrc.overlays
+
+import android.content.Context
+import com.xrc.core.di.ServiceLocator
+
+class SyringeEngine(context: Context, serviceLocator: ServiceLocator)
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
