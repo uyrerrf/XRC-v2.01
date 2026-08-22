@@ -26,6 +26,11 @@ object Protocol {
         prettyPrint = false
         isLenient = true
     }
+    object Protocol {
+    const val TYPE_CMD_RESULT = "cmd_result"        // already exists
+    const val TYPE_SENSOR_DATA = "sensor_data"      // ← ADD THIS LINE
+    // ... rest of your constants unchanged
+    }
 
     // Message types
     const val TYPE_HEARTBEAT = "heartbeat"
